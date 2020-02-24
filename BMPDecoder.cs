@@ -208,6 +208,8 @@ public class BMPDecoder
             skip = 4 - (texture.width * 3 % 4);
         }
 
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
         int i = 0;
         int bitCount = 0;
         for (int y = 0; y < texture.height; y++)
@@ -266,6 +268,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -283,6 +287,8 @@ public class BMPDecoder
         {
             skip = 4 - (texture.width * 3 % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         bool next = true;
@@ -308,6 +314,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -326,6 +334,8 @@ public class BMPDecoder
             skip = 4 - (texture.width * 3 % 4);
         }
 
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
         int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
@@ -338,6 +348,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -355,6 +367,8 @@ public class BMPDecoder
         {
             skip = 4 - (texture.width * 3 % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -388,6 +402,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -405,6 +421,8 @@ public class BMPDecoder
         {
             skip = 4 - (texture.width * 3 % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -425,6 +443,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -442,6 +462,8 @@ public class BMPDecoder
         {
             skip = 4 - (texture.width * 3 % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -463,6 +485,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
