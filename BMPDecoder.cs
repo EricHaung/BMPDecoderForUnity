@@ -203,19 +203,22 @@ public class BMPDecoder
 
         int skip = 0;
 
-        if (texture.width * 3 % 4 != 0)
+        int rowByteLenght = (int)Mathf.Ceil(texture.width / 8f);
+        if (rowByteLenght % 4 != 0)
         {
-            skip = 4 - (texture.width * 3 % 4);
+            skip = 4 - (rowByteLenght % 4);
         }
 
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
         int i = 0;
-        int bitCount = 0;
         for (int y = 0; y < texture.height; y++)
         {
+            int bitCount = 0;
+            byte value = 0x00;
             for (int x = 0; x < texture.width; x++)
             {
                 int k = tag.bfOffBits + i;
-                byte value = 0x00;
                 int index = 0;
 
                 switch (bitCount)
@@ -266,6 +269,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -279,19 +284,22 @@ public class BMPDecoder
 
         int skip = 0;
 
-        if (texture.width * 3 % 4 != 0)
+        int rowByteLenght = (int)Mathf.Ceil(texture.width / 2f);
+        if (rowByteLenght % 4 != 0)
         {
-            skip = 4 - (texture.width * 3 % 4);
+            skip = 4 - (rowByteLenght % 4);
         }
 
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
         int i = 0;
-        bool next = true;
         for (int y = 0; y < texture.height; y++)
         {
+            bool next = true;
+            byte value = 0x00;
             for (int x = 0; x < texture.width; x++)
             {
                 int k = tag.bfOffBits + i;
-                byte value = 0x00;
                 int index = 0;
                 if (next)
                 {
@@ -308,6 +316,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -321,10 +331,13 @@ public class BMPDecoder
 
         int skip = 0;
 
-        if (texture.width * 3 % 4 != 0)
+        int rowByteLenght = texture.width;
+        if (rowByteLenght % 4 != 0)
         {
-            skip = 4 - (texture.width * 3 % 4);
+            skip = 4 - (rowByteLenght % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -338,6 +351,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -351,10 +366,13 @@ public class BMPDecoder
 
         int skip = 0;
 
-        if (texture.width * 3 % 4 != 0)
+        int rowByteLenght = texture.width * 2;
+        if (rowByteLenght % 4 != 0)
         {
-            skip = 4 - (texture.width * 3 % 4);
+            skip = 4 - (rowByteLenght % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -371,16 +389,16 @@ public class BMPDecoder
 
                 if (info.biCompression == 0) //RGB 555 0x 0RRRRRGG GGGBBBBB
                 {
-                    rgbR = Convert.ToInt16((value[0] >> 2) & 0x1F);
-                    rgbG = Convert.ToInt16(((value[0] << 3) & 0x18) | ((value[1] >> 5) & 0x07));
-                    rgbB = Convert.ToInt16(value[1] & 0x1F);
+                    rgbR = Convert.ToInt16((value[1] >> 2) & 0x1F);
+                    rgbG = Convert.ToInt16(((value[1] << 3) & 0x18) | ((value[0] >> 5) & 0x07));
+                    rgbB = Convert.ToInt16(value[0] & 0x1F);
                     pixelColor = new Color(rgbR / 32f, rgbG / 32f, rgbB / 32f);
                 }
                 else if (info.biCompression == 3) //RGB 565 0x RRRRRGGG GGGBBBBB
                 {
-                    rgbR = Convert.ToInt16((value[0] >> 3) & 0x1F);
-                    rgbG = Convert.ToInt16(((value[0] << 3) & 0x36) | ((value[1] >> 5) & 0x07));
-                    rgbB = Convert.ToInt16(value[1] & 0x1F);
+                    rgbR = Convert.ToInt16((value[1] >> 3) & 0x1F);
+                    rgbG = Convert.ToInt16(((value[1] << 3) & 0x38) | ((value[0] >> 5) & 0x07));
+                    rgbB = Convert.ToInt16(value[0] & 0x1F);
                     pixelColor = new Color(rgbR / 32f, rgbG / 64f, rgbB / 32f);
                 }
 
@@ -388,6 +406,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -405,6 +425,8 @@ public class BMPDecoder
         {
             skip = 4 - (texture.width * 3 % 4);
         }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -425,6 +447,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
@@ -438,10 +462,9 @@ public class BMPDecoder
 
         int skip = 0;
 
-        if (texture.width * 3 % 4 != 0)
-        {
-            skip = 4 - (texture.width * 3 % 4);
-        }
+        //Not need skip
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
 
         int i = 0;
         for (int y = 0; y < texture.height; y++)
@@ -452,10 +475,10 @@ public class BMPDecoder
                 byte[] value = new byte[4];
                 fileReader.Read(value, 0, 4);
 
-                int rgbA = Convert.ToInt16(value[0]);
-                int rgbB = Convert.ToInt16(value[1]);
-                int rgbG = Convert.ToInt16(value[2]);
-                int rgbR = Convert.ToInt16(value[3]);
+                int rgbB = Convert.ToInt16(value[0]);
+                int rgbG = Convert.ToInt16(value[1]);
+                int rgbR = Convert.ToInt16(value[2]);
+                int rgbA = Convert.ToInt16(value[3]);
 
                 Color pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
 
@@ -463,6 +486,8 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
         }
 
         texture.Apply();
