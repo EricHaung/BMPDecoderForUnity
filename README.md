@@ -1,2 +1,2 @@
 # BMPDecoder
-Decode BMP Format
+Decode BMP Format for Unity
