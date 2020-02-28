@@ -5,10 +5,11 @@ using System;
 
 public class BMPDecoder
 {
-
     tagBITMAPFILEHEADER tag;
     tagBMP_INFOHEADER info;
     List<tagRGBQUAD> colorList;
+
+    bool bTopDown;
 
     public Texture2D Decode(string path)
     {
@@ -21,24 +22,33 @@ public class BMPDecoder
         DecodeHeader(fileReader);
         DecodeInfo(fileReader);
 
+        if (info.biHeight < 0)
+        {
+            info.biHeight = -info.biHeight;
+            bTopDown = true;
+        }
+
         switch (info.biBitCount)
         {
             case 1:
-                colorList = new List<tagRGBQUAD>();
                 DecodeRGBQUAD(fileReader);
                 texture = Decode1BitImage(fileReader);
                 break;
 
             case 4:
-                colorList = new List<tagRGBQUAD>();
                 DecodeRGBQUAD(fileReader);
-                texture = Decode4BitImage(fileReader);
+                if (info.biCompression == 2)
+                    texture = Decode4BitRleImage(fileReader);
+                else
+                    texture = Decode4BitImage(fileReader);
                 break;
 
             case 8:
-                colorList = new List<tagRGBQUAD>();
                 DecodeRGBQUAD(fileReader);
-                texture = Decode8BitImage(fileReader);
+                if (info.biCompression == 1)
+                    texture = Decode8BitRleImage(fileReader);
+                else
+                    texture = Decode8BitImage(fileReader);
                 break;
 
             case 16:
@@ -54,9 +64,10 @@ public class BMPDecoder
                 break;
         }
 
+        texture.Apply();
+
         fileReader.Close();
         bmpFile.Close();
-
 
         return texture;
     }
@@ -75,21 +86,24 @@ public class BMPDecoder
         switch (info.biBitCount)
         {
             case 1:
-                colorList = new List<tagRGBQUAD>();
                 DecodeRGBQUAD(fileReader);
                 texture = Decode1BitImage(fileReader);
                 break;
 
             case 4:
-                colorList = new List<tagRGBQUAD>();
                 DecodeRGBQUAD(fileReader);
-                texture = Decode4BitImage(fileReader);
+                if (info.biCompression == 2)
+                    texture = Decode4BitRleImage(fileReader);
+                else
+                    texture = Decode4BitImage(fileReader);
                 break;
 
             case 8:
-                colorList = new List<tagRGBQUAD>();
                 DecodeRGBQUAD(fileReader);
-                texture = Decode8BitImage(fileReader);
+                if (info.biCompression == 1)
+                    texture = Decode8BitRleImage(fileReader);
+                else
+                    texture = Decode8BitImage(fileReader);
                 break;
 
             case 16:
@@ -105,8 +119,9 @@ public class BMPDecoder
                 break;
         }
 
-        fileReader.Close();
+        texture.Apply();
 
+        fileReader.Close();
 
         return texture;
     }
@@ -174,6 +189,7 @@ public class BMPDecoder
 
     private void DecodeRGBQUAD(BinaryReader fileReader)
     {
+        colorList = new List<tagRGBQUAD>();
         for (int index = 0; index < (int)Math.Pow(2, info.biBitCount); index++)
         {
             tagRGBQUAD quad = new tagRGBQUAD();
@@ -191,7 +207,7 @@ public class BMPDecoder
             quad.rgbB = Convert.ToInt16(0x00 | rgbB);
             quad.rgbG = Convert.ToInt16(0x00 | rgbG);
             quad.rgbR = Convert.ToInt16(0x00 | rgbR);
-            quad.rgbReserved = Convert.ToInt32(Convert.ToSByte(rgbReserved));
+            quad.rgbReserved = Convert.ToInt16(0x00 | rgbReserved);
             quad.color = new Color(quad.rgbR / 255.0f, quad.rgbG / 255.0f, quad.rgbB / 255.0f);
             colorList.Add(quad);
         }
@@ -265,7 +281,7 @@ public class BMPDecoder
                         break;
                 }
 
-                texture.SetPixel(x, y, colorList[index].color);
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
                 i += 3;
             }
             i += skip;
@@ -273,7 +289,93 @@ public class BMPDecoder
             fileReader.BaseStream.Position += skip;
         }
 
-        texture.Apply();
+        return texture;
+    }
+
+    private Texture2D Decode4BitRleImage(BinaryReader fileReader)
+    {
+        Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
+        int x = 0;
+        int y = 0;
+        while (fileReader.BaseStream.Position < fileReader.BaseStream.Length)
+        {
+            byte b1 = fileReader.ReadByte();
+            byte b2 = fileReader.ReadByte();
+
+            if (b1 > 0)
+            {
+                //Repeat color
+                bool next = true;
+                byte value = b2;
+                for (int j = 0; j < b1; j++)
+                {
+                    int index;
+                    if (next)
+                    {
+                        next = false;
+                        index = (value >> 4) & 0x0F;
+                    }
+                    else
+                    {
+                        next = true;
+                        index = value & 0x0F;
+                    }
+
+                    texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
+                    x++;
+                }
+            }
+            else if (b2 == 0)
+            {
+                //Next row
+                x = 0;
+                y++;
+            }
+            else if (b2 == 1)
+            {
+                //Finish
+                break;
+            }
+            else if (b2 == 2)
+            {
+                //Move
+                x += fileReader.ReadByte();
+                y += fileReader.ReadByte();
+            }
+            else
+            {
+                //Read bytes and color
+                bool next = true;
+                byte value = 0x00;
+                for (int j = 0; j < b2; j++)
+                {
+                    int index;
+                    if (next)
+                    {
+                        next = false;
+                        value = fileReader.ReadByte();
+                        index = (value >> 4) & 0x0F;
+                    }
+                    else
+                    {
+                        next = true;
+                        index = value & 0x0F;
+                    }
+
+                    texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
+                    x++;
+                }
+
+                //skip
+                if ((b2 - 1) % 4 < 2)
+                {
+                    fileReader.BaseStream.Position++;
+                }
+            }
+        }
 
         return texture;
     }
@@ -312,7 +414,7 @@ public class BMPDecoder
                     next = true;
                     index = Convert.ToInt32(value & 0x0F);
                 }
-                texture.SetPixel(x, y, colorList[index].color);
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
                 i += 3;
             }
             i += skip;
@@ -320,7 +422,67 @@ public class BMPDecoder
             fileReader.BaseStream.Position += skip;
         }
 
-        texture.Apply();
+        return texture;
+    }
+
+    private Texture2D Decode8BitRleImage(BinaryReader fileReader)
+    {
+        Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
+        int x = 0;
+        int y = 0;
+        while (fileReader.BaseStream.Position < fileReader.BaseStream.Length)
+        {
+            byte b1 = fileReader.ReadByte();
+            byte b2 = fileReader.ReadByte();
+
+            if (b1 > 0)
+            {
+                //Repeat color
+                for (int j = 0; j < b1; j++)
+                {
+                    int index = b2;
+                    texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
+                    x++;
+                }
+            }
+            else if (b2 == 0)
+            {
+                //Next row
+                x = 0;
+                y++;
+            }
+            else if (b2 == 1)
+            {
+                //Finish
+                break;
+            }
+            else if (b2 == 2)
+            {
+                //Move
+                x += fileReader.ReadByte();
+                y += fileReader.ReadByte();
+            }
+            else
+            {
+                //Read bytes and color
+                for (int j = 0; j < b2; j++)
+                {
+                    int index = fileReader.ReadByte();
+   
+                    texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
+                    x++;
+                }
+
+                //skip
+                if (b2 % 2 == 1)
+                {
+                    fileReader.BaseStream.Position++;
+                }
+            }
+        }
 
         return texture;
     }
@@ -347,15 +509,13 @@ public class BMPDecoder
                 int k = tag.bfOffBits + i;
                 byte value = fileReader.ReadByte();
                 int index = Convert.ToInt32(value);
-                texture.SetPixel(x, y, colorList[index].color);
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
                 i += 3;
             }
             i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
-
-        texture.Apply();
 
         return texture;
     }
@@ -402,15 +562,13 @@ public class BMPDecoder
                     pixelColor = new Color(rgbR / 32f, rgbG / 64f, rgbB / 32f);
                 }
 
-                texture.SetPixel(x, y, pixelColor);
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
                 i += 3;
             }
             i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
-
-        texture.Apply();
 
         return texture;
     }
@@ -443,15 +601,13 @@ public class BMPDecoder
 
                 Color pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
 
-                texture.SetPixel(x, y, pixelColor);
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
                 i += 3;
             }
             i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
-
-        texture.Apply();
 
         return texture;
     }
@@ -482,15 +638,13 @@ public class BMPDecoder
 
                 Color pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
 
-                texture.SetPixel(x, y, pixelColor);
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
                 i += 3;
             }
             i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
-
-        texture.Apply();
 
         return texture;
     }
