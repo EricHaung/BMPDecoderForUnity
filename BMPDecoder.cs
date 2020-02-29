@@ -35,6 +35,11 @@ public class BMPDecoder
                 texture = Decode1BitImage(fileReader);
                 break;
 
+            case 2:
+                DecodeRGBQUAD(fileReader);
+                texture = Decode2BitImage(fileReader);
+                break;
+
             case 4:
                 DecodeRGBQUAD(fileReader);
                 if (info.biCompression == 2)
@@ -83,11 +88,22 @@ public class BMPDecoder
         DecodeHeader(fileReader);
         DecodeInfo(fileReader);
 
+        if (info.biHeight < 0)
+        {
+            info.biHeight = -info.biHeight;
+            bTopDown = true;
+        }
+
         switch (info.biBitCount)
         {
             case 1:
                 DecodeRGBQUAD(fileReader);
                 texture = Decode1BitImage(fileReader);
+                break;
+
+            case 2:
+                DecodeRGBQUAD(fileReader);
+                texture = Decode2BitImage(fileReader);
                 break;
 
             case 4:
@@ -285,6 +301,60 @@ public class BMPDecoder
                 i += 3;
             }
             i += skip;
+
+            fileReader.BaseStream.Position += skip;
+        }
+
+        return texture;
+    }
+
+    private Texture2D Decode2BitImage(BinaryReader fileReader)
+    {
+        Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
+
+        int skip = 0;
+
+        int rowByteLenght = (int)Mathf.Ceil(texture.width / 4f);
+        if (rowByteLenght % 4 != 0)
+        {
+            skip = 4 - (rowByteLenght % 4);
+        }
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
+        for (int y = 0; y < texture.height; y++)
+        {
+            int bitCount = 0;
+            byte value = 0x00;
+            for (int x = 0; x < texture.width; x++)
+            {
+                int index = 0;
+                switch (bitCount)
+                {
+                    case 0:
+                        bitCount++;
+                        value = fileReader.ReadByte();
+                        index = Convert.ToInt32((value >> 6) & 0x03);
+                        break;
+
+                    case 1:
+                        bitCount++;
+                        index = Convert.ToInt32((value >> 4) & 0x03);
+                        break;
+
+                    case 2:
+                        bitCount++;
+                        index = Convert.ToInt32((value >> 2) & 0x03);
+                        break;
+
+                    case 3:
+                        bitCount = 0;
+                        index = Convert.ToInt32(value & 0x03);
+                        break;
+                }
+
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
+            }
 
             fileReader.BaseStream.Position += skip;
         }
@@ -542,24 +612,21 @@ public class BMPDecoder
                 int k = tag.bfOffBits + i;
                 byte[] value = new byte[2];
                 fileReader.Read(value, 0, 2);
-                int rgbR;
-                int rgbG;
-                int rgbB;
                 Color pixelColor = new Color(0, 0, 0);
 
                 if (info.biCompression == 0) //RGB 555 0x 0RRRRRGG GGGBBBBB
                 {
-                    rgbR = Convert.ToInt16((value[1] >> 2) & 0x1F);
-                    rgbG = Convert.ToInt16(((value[1] << 3) & 0x18) | ((value[0] >> 5) & 0x07));
-                    rgbB = Convert.ToInt16(value[0] & 0x1F);
-                    pixelColor = new Color(rgbR / 32f, rgbG / 32f, rgbB / 32f);
+                    int rgbR = Convert.ToInt16((value[1] >> 2) & 0x1F) * 33 / 4;
+                    int rgbG = Convert.ToInt16(((value[1] << 3) & 0x18) | ((value[0] >> 5) & 0x07)) * 33 / 4;
+                    int rgbB = Convert.ToInt16(value[0] & 0x1F) * 33 / 4;
+                    pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
                 }
                 else if (info.biCompression == 3) //RGB 565 0x RRRRRGGG GGGBBBBB
                 {
-                    rgbR = Convert.ToInt16((value[1] >> 3) & 0x1F);
-                    rgbG = Convert.ToInt16(((value[1] << 3) & 0x38) | ((value[0] >> 5) & 0x07));
-                    rgbB = Convert.ToInt16(value[0] & 0x1F);
-                    pixelColor = new Color(rgbR / 32f, rgbG / 64f, rgbB / 32f);
+                    int rgbR = Convert.ToInt16((value[1] >> 3) & 0x1F) * 33 / 4;
+                    int rgbG = Convert.ToInt16(((value[1] << 3) & 0x38) | ((value[0] >> 5) & 0x07)) * 65 / 16;
+                    int rgbB = Convert.ToInt16(value[0] & 0x1F) * 33 / 4;
+                    pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
                 }
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
