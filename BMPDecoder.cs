@@ -7,6 +7,7 @@ public class BMPDecoder
 {
     tagBITMAPFILEHEADER tag;
     tagBMP_INFOHEADER info;
+    tagBITFIELDS bitFields;
     List<tagRGBQUAD> colorList;
 
     bool bTopDown;
@@ -21,6 +22,7 @@ public class BMPDecoder
         BinaryReader fileReader = new BinaryReader(bmpFile);
         DecodeHeader(fileReader);
         DecodeInfo(fileReader);
+        DecodeBitFields(fileReader);
 
         if (info.biHeight < 0)
         {
@@ -65,7 +67,10 @@ public class BMPDecoder
                 break;
 
             case 32:
-                texture = Decode32BitImage(fileReader);
+                if (info.biCompression == 0)
+                    texture = Decode32BitImage(fileReader);
+                else if (info.biCompression == 3 || info.biCompression == 6)
+                    texture = Decode32BitCompressionImage(fileReader);
                 break;
         }
 
@@ -87,6 +92,7 @@ public class BMPDecoder
         BinaryReader fileReader = new BinaryReader(stream);
         DecodeHeader(fileReader);
         DecodeInfo(fileReader);
+        DecodeBitFields(fileReader);
 
         if (info.biHeight < 0)
         {
@@ -131,7 +137,10 @@ public class BMPDecoder
                 break;
 
             case 32:
-                texture = Decode32BitImage(fileReader);
+                if (info.biCompression == 0)
+                    texture = Decode32BitImage(fileReader);
+                else if (info.biCompression == 3 || info.biCompression == 6)
+                    texture = Decode32BitCompressionImage(fileReader);
                 break;
         }
 
@@ -144,63 +153,76 @@ public class BMPDecoder
 
     private void DecodeHeader(BinaryReader fileReader)
     {
-        byte[] bfTypeArray = new byte[2];
-        byte[] bfSizeArray = new byte[4];
-        byte[] bfReserved1Array = new byte[2];
-        byte[] bfReserved2Array = new byte[2];
-        byte[] bfOffBitsArray = new byte[4];
-
-
-        fileReader.Read(bfTypeArray, 0, 2);
-        fileReader.Read(bfSizeArray, 0, 4);
-        fileReader.Read(bfReserved1Array, 0, 2);
-        fileReader.Read(bfReserved2Array, 0, 2);
-        fileReader.Read(bfOffBitsArray, 0, 4);
-
-        tag.bfType = System.Text.Encoding.UTF8.GetString(bfTypeArray);
-        tag.bfSize = BitConverter.ToInt32(bfSizeArray, 0);
-        tag.bfReserved1 = BitConverter.ToInt16(bfReserved1Array, 0);
-        tag.bfReserved2 = BitConverter.ToInt16(bfReserved2Array, 0);
-        tag.bfOffBits = BitConverter.ToInt32(bfOffBitsArray, 0);
+        tag.bfType = System.Text.Encoding.UTF8.GetString(fileReader.ReadBytes(2));
+        tag.bfSize = fileReader.ReadInt32();
+        tag.bfReserved1 = fileReader.ReadInt16();
+        tag.bfReserved2 = fileReader.ReadInt16();
+        tag.bfOffBits = fileReader.ReadInt32();
     }
 
     private void DecodeInfo(BinaryReader fileReader)
     {
-        byte[] biSize = new byte[4];
-        byte[] biWidth = new byte[4];
-        byte[] biHeight = new byte[4];
-        byte[] biPlanes = new byte[2];
-        byte[] biBitCount = new byte[2];
-        byte[] biCompression = new byte[4];
-        byte[] biSizeImage = new byte[4];
-        byte[] biXPelsPerMeter = new byte[4];
-        byte[] biYPelsPerMeter = new byte[4];
-        byte[] biClrUsed = new byte[4];
-        byte[] biClrImportant = new byte[4];
+        info.biSize = fileReader.ReadInt32();
+        info.biWidth = fileReader.ReadInt32();
+        info.biHeight = fileReader.ReadInt32();
+        info.biPlanes = fileReader.ReadInt16();
+        info.biBitCount = fileReader.ReadInt16();
+        info.biCompression = fileReader.ReadInt32();
+        info.biSizeImage = fileReader.ReadInt32();
+        info.biXPelsPerMeter = fileReader.ReadInt32();
+        info.biYPelsPerMeter = fileReader.ReadInt32();
+        info.biClrUsed = fileReader.ReadInt32();
+        info.biClrImportant = fileReader.ReadInt32();
+    }
 
-        fileReader.Read(biSize, 0, 4);
-        fileReader.Read(biWidth, 0, 4);
-        fileReader.Read(biHeight, 0, 4);
-        fileReader.Read(biPlanes, 0, 2);
-        fileReader.Read(biBitCount, 0, 2);
-        fileReader.Read(biCompression, 0, 4);
-        fileReader.Read(biSizeImage, 0, 4);
-        fileReader.Read(biXPelsPerMeter, 0, 4);
-        fileReader.Read(biYPelsPerMeter, 0, 4);
-        fileReader.Read(biClrUsed, 0, 4);
-        fileReader.Read(biClrImportant, 0, 4);
+    private static byte GetShift(uint mask)
+    {
+        for (byte i = 0; i < 32; i++)
+            if ((mask & 1 << i) != 0)
+                return i;
 
-        info.biSize = BitConverter.ToInt32(biSize, 0);
-        info.biWidth = BitConverter.ToInt32(biWidth, 0);
-        info.biHeight = BitConverter.ToInt32(biHeight, 0);
-        info.biPlanes = BitConverter.ToInt16(biPlanes, 0);
-        info.biBitCount = BitConverter.ToInt16(biBitCount, 0);
-        info.biCompression = BitConverter.ToInt32(biCompression, 0);
-        info.biSizeImage = BitConverter.ToInt32(biSizeImage, 0);
-        info.biXPelsPerMeter = BitConverter.ToInt32(biXPelsPerMeter, 0);
-        info.biYPelsPerMeter = BitConverter.ToInt32(biYPelsPerMeter, 0);
-        info.biClrUsed = BitConverter.ToInt32(biClrUsed, 0);
-        info.biClrImportant = BitConverter.ToInt32(biClrImportant, 0);
+        return 0;
+    }
+
+    private static double GetMult(uint mask)
+    {
+        double result = 256d;
+        int bits = 0;
+        for (int i = 0; i < 32; i++)
+            if ((mask & 1 << i) != 0)
+            {
+                bits++;
+                result /= 4d;
+            }
+
+        int maxValue = 1 << bits;
+        return result * (maxValue + 1);
+    }
+
+    private void DecodeBitFields(BinaryReader fileReader)
+    {
+        bitFields = new tagBITFIELDS();
+        if (info.biCompression == 3 || info.biCompression == 6)
+        {
+            bitFields.bRedMask = fileReader.ReadUInt32();
+            bitFields.bRedShift = GetShift(bitFields.bRedMask);
+            bitFields.bRedMult = GetMult(bitFields.bRedMask);
+
+            bitFields.bGreenMask = fileReader.ReadUInt32();
+            bitFields.bGreenShift = GetShift(bitFields.bGreenMask);
+            bitFields.bGreenMult = GetMult(bitFields.bGreenMask);
+
+            bitFields.bBlueMask = fileReader.ReadUInt32();
+            bitFields.bBlueShift = GetShift(bitFields.bBlueMask);
+            bitFields.bBlueMult = GetMult(bitFields.bBlueMask);
+
+            if (info.biCompression == 6 || tag.bfOffBits != 66)
+            {
+                bitFields.bAlphaMask = fileReader.ReadUInt32();
+                bitFields.bAlphaShift = GetShift(bitFields.bAlphaMask);
+                bitFields.bAlphaMult = GetMult(bitFields.bAlphaMask);
+            }
+        } 
     }
 
     private void DecodeRGBQUAD(BinaryReader fileReader)
@@ -209,21 +231,10 @@ public class BMPDecoder
         for (int index = 0; index < (int)Math.Pow(2, info.biBitCount); index++)
         {
             tagRGBQUAD quad = new tagRGBQUAD();
-            byte rgbB;
-            byte rgbG;
-            byte rgbR;
-            byte rgbReserved;
-
-            rgbB = fileReader.ReadByte();
-            rgbG = fileReader.ReadByte();
-            rgbR = fileReader.ReadByte();
-            rgbReserved = fileReader.ReadByte();
-
-
-            quad.rgbB = Convert.ToInt16(0x00 | rgbB);
-            quad.rgbG = Convert.ToInt16(0x00 | rgbG);
-            quad.rgbR = Convert.ToInt16(0x00 | rgbR);
-            quad.rgbReserved = Convert.ToInt16(0x00 | rgbReserved);
+            quad.rgbB = fileReader.ReadByte();
+            quad.rgbG = fileReader.ReadByte();
+            quad.rgbR = fileReader.ReadByte();
+            quad.rgbReserved = fileReader.ReadByte();
             quad.color = new Color(quad.rgbR / 255.0f, quad.rgbG / 255.0f, quad.rgbB / 255.0f);
             colorList.Add(quad);
         }
@@ -541,7 +552,7 @@ public class BMPDecoder
                 for (int j = 0; j < b2; j++)
                 {
                     int index = fileReader.ReadByte();
-   
+
                     texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
                     x++;
                 }
@@ -610,23 +621,27 @@ public class BMPDecoder
             for (int x = 0; x < texture.width; x++)
             {
                 int k = tag.bfOffBits + i;
-                byte[] value = new byte[2];
-                fileReader.Read(value, 0, 2);
+                ushort value = fileReader.ReadUInt16();
                 Color pixelColor = new Color(0, 0, 0);
 
                 if (info.biCompression == 0) //RGB 555 0x 0RRRRRGG GGGBBBBB
                 {
-                    int rgbR = Convert.ToInt16((value[1] >> 2) & 0x1F) * 33 / 4;
-                    int rgbG = Convert.ToInt16(((value[1] << 3) & 0x18) | ((value[0] >> 5) & 0x07)) * 33 / 4;
-                    int rgbB = Convert.ToInt16(value[0] & 0x1F) * 33 / 4;
+                    int rgbR = Convert.ToInt16((value >> 10) & 0x1F) * 33 / 4;
+                    int rgbG = Convert.ToInt16((value >> 5) & 0x1F) * 33 / 4;
+                    int rgbB = Convert.ToInt16(value & 0x1F) * 33 / 4;
                     pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
                 }
-                else if (info.biCompression == 3) //RGB 565 0x RRRRRGGG GGGBBBBB
+                else if (info.biCompression == 3 || info.biCompression == 6) //RGB 565 0x RRRRRGGG GGGBBBBB
                 {
-                    int rgbR = Convert.ToInt16((value[1] >> 3) & 0x1F) * 33 / 4;
-                    int rgbG = Convert.ToInt16(((value[1] << 3) & 0x38) | ((value[0] >> 5) & 0x07)) * 65 / 16;
-                    int rgbB = Convert.ToInt16(value[0] & 0x1F) * 33 / 4;
-                    pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
+                    int rgbR = (int)(((value & bitFields.bRedMask) >> bitFields.bRedShift) * bitFields.bRedMult);
+                    int rgbG = (int)(((value & bitFields.bGreenMask) >> bitFields.bGreenShift) * bitFields.bGreenMult);
+                    int rgbB = (int)(((value & bitFields.bBlueMask) >> bitFields.bBlueShift) * bitFields.bBlueMult);
+
+                    int rgbA = 255;
+                    if (bitFields.bAlphaMask != 0)
+                        rgbA = (int)(((value & bitFields.bAlphaMask) >> bitFields.bAlphaShift) * bitFields.bAlphaMult);
+
+                    pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
                 }
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
@@ -701,9 +716,8 @@ public class BMPDecoder
                 int rgbB = Convert.ToInt16(value[0]);
                 int rgbG = Convert.ToInt16(value[1]);
                 int rgbR = Convert.ToInt16(value[2]);
-                int rgbA = Convert.ToInt16(value[3]);
-
-                Color pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
+                int rgbReserved = Convert.ToInt16(value[3]);
+                var pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
                 i += 3;
@@ -716,14 +730,48 @@ public class BMPDecoder
         return texture;
     }
 
+    private Texture2D Decode32BitCompressionImage(BinaryReader fileReader)
+    {
+        Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
+
+        int skip = 0;
+
+        //Not need skip
+
+        fileReader.BaseStream.Position = tag.bfOffBits;
+
+        for (int y = 0; y < texture.height; y++)
+        {
+            for (int x = 0; x < texture.width; x++)
+            {
+                uint value = fileReader.ReadUInt32();
+
+                int rgbR = (int)(((value & bitFields.bRedMask) >> bitFields.bRedShift) * bitFields.bRedMult);
+                int rgbG = (int)(((value & bitFields.bGreenMask) >> bitFields.bGreenShift) * bitFields.bGreenMult);
+                int rgbB = (int)(((value & bitFields.bBlueMask) >> bitFields.bBlueShift) * bitFields.bBlueMult);
+
+                int rgbA = 255;
+                if (bitFields.bAlphaMask != 0)
+                    rgbA = (int)(((value & bitFields.bAlphaMask) >> bitFields.bAlphaShift) * bitFields.bAlphaMult);
+
+                var pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
+
+                texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
+            }
+
+            fileReader.BaseStream.Position += skip;
+        }
+
+        return texture;
+    }
 }
 
 public struct tagBITMAPFILEHEADER
 {
     public string bfType;
     public int bfSize;
-    public int bfReserved1;
-    public int bfReserved2;
+    public short bfReserved1;
+    public short bfReserved2;
     public int bfOffBits;
 }
 
@@ -732,8 +780,8 @@ public struct tagBMP_INFOHEADER
     public int biSize;
     public int biWidth;
     public int biHeight;
-    public int biPlanes;
-    public int biBitCount;
+    public short biPlanes;
+    public short biBitCount;
     public int biCompression;
     public int biSizeImage;
     public int biXPelsPerMeter;
@@ -742,12 +790,30 @@ public struct tagBMP_INFOHEADER
     public int biClrImportant;
 }
 
+public struct tagBITFIELDS
+{
+    public uint bRedMask;
+    public uint bGreenMask;
+    public uint bBlueMask;
+    public uint bAlphaMask;
+
+    public byte bRedShift;
+    public byte bGreenShift;
+    public byte bBlueShift;
+    public byte bAlphaShift;
+
+    public double bRedMult;
+    public double bGreenMult;
+    public double bBlueMult;
+    public double bAlphaMult;
+}
+
 public struct tagRGBQUAD
 {
-    public int rgbB;
-    public int rgbG;
-    public int rgbR;
-    public int rgbReserved;
+    public byte rgbB;
+    public byte rgbG;
+    public byte rgbR;
+    public byte rgbReserved;
 
     public Color color;
 }
