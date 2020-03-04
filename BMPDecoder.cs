@@ -14,85 +14,26 @@ public class BMPDecoder
 
     public Texture2D Decode(string path)
     {
-        FileStream bmpFile = File.Open(path, FileMode.Open);
-        Texture2D texture = null;
-        tag = new tagBITMAPFILEHEADER();
-        info = new tagBMP_INFOHEADER();
-
-        BinaryReader fileReader = new BinaryReader(bmpFile);
-        DecodeHeader(fileReader);
-        DecodeInfo(fileReader);
-        DecodeBitFields(fileReader);
-
-        if (info.biHeight < 0)
-        {
-            info.biHeight = -info.biHeight;
-            bTopDown = true;
-        }
-
-        switch (info.biBitCount)
-        {
-            case 1:
-                DecodeRGBQUAD(fileReader);
-                texture = Decode1BitImage(fileReader);
-                break;
-
-            case 2:
-                DecodeRGBQUAD(fileReader);
-                texture = Decode2BitImage(fileReader);
-                break;
-
-            case 4:
-                DecodeRGBQUAD(fileReader);
-                if (info.biCompression == 2)
-                    texture = Decode4BitRleImage(fileReader);
-                else
-                    texture = Decode4BitImage(fileReader);
-                break;
-
-            case 8:
-                DecodeRGBQUAD(fileReader);
-                if (info.biCompression == 1)
-                    texture = Decode8BitRleImage(fileReader);
-                else
-                    texture = Decode8BitImage(fileReader);
-                break;
-
-            case 16:
-                texture = Decode16BitImage(fileReader);
-                break;
-
-            case 24:
-                texture = Decode24BitImage(fileReader);
-                break;
-
-            case 32:
-                if (info.biCompression == 0)
-                    texture = Decode32BitImage(fileReader);
-                else if (info.biCompression == 3 || info.biCompression == 6)
-                    texture = Decode32BitCompressionImage(fileReader);
-                break;
-        }
-
-        texture.Apply();
-
-        fileReader.Close();
-        bmpFile.Close();
-
-        return texture;
+        using (var stream = File.Open(path, FileMode.Open))
+            using (var fileReader = new BinaryReader(stream))
+                return Decode(fileReader);
     }
 
     public Texture2D Decode(byte[] bytes)
     {
-        Stream stream = new MemoryStream(bytes);
+        using (var stream = new MemoryStream(bytes))
+            using (var fileReader = new BinaryReader(stream))
+                return Decode(fileReader);
+    }
+
+    public Texture2D Decode(BinaryReader fileReader)
+    {
         Texture2D texture = null;
         tag = new tagBITMAPFILEHEADER();
         info = new tagBMP_INFOHEADER();
 
-        BinaryReader fileReader = new BinaryReader(stream);
         DecodeHeader(fileReader);
         DecodeInfo(fileReader);
-        DecodeBitFields(fileReader);
 
         if (info.biHeight < 0)
         {
@@ -145,8 +86,6 @@ public class BMPDecoder
         }
 
         texture.Apply();
-
-        fileReader.Close();
 
         return texture;
     }
@@ -163,16 +102,37 @@ public class BMPDecoder
     private void DecodeInfo(BinaryReader fileReader)
     {
         info.biSize = fileReader.ReadInt32();
-        info.biWidth = fileReader.ReadInt32();
-        info.biHeight = fileReader.ReadInt32();
-        info.biPlanes = fileReader.ReadInt16();
-        info.biBitCount = fileReader.ReadInt16();
-        info.biCompression = fileReader.ReadInt32();
-        info.biSizeImage = fileReader.ReadInt32();
-        info.biXPelsPerMeter = fileReader.ReadInt32();
-        info.biYPelsPerMeter = fileReader.ReadInt32();
-        info.biClrUsed = fileReader.ReadInt32();
-        info.biClrImportant = fileReader.ReadInt32();
+        if (info.IsCore)
+        {
+            info.biWidth = fileReader.ReadInt16();
+            info.biHeight = fileReader.ReadInt16();
+            info.biPlanes = fileReader.ReadInt16();
+            info.biBitCount = fileReader.ReadInt16();
+        }
+        else
+        {
+            info.biWidth = fileReader.ReadInt32();
+            info.biHeight = fileReader.ReadInt32();
+            info.biPlanes = fileReader.ReadInt16();
+            info.biBitCount = fileReader.ReadInt16();
+            if (info.IsOS2V2Lite)
+                return;
+
+            info.biCompression = fileReader.ReadInt32();
+            info.biSizeImage = fileReader.ReadInt32();
+            info.biXPelsPerMeter = fileReader.ReadInt32();
+            info.biYPelsPerMeter = fileReader.ReadInt32();
+            info.biClrUsed = fileReader.ReadInt32();
+            info.biClrImportant = fileReader.ReadInt32();
+            DecodeBitFields(fileReader);
+
+            if (info.IsOS2V2)
+                fileReader.BaseStream.Position += 64 - 40; //skip other info
+            if (info.IsV4)
+                fileReader.BaseStream.Position += 108 - 40 - 16; //skip other info
+            if (info.IsV5)
+                fileReader.BaseStream.Position += 124 - 40 - 16; //skip other info
+        }
     }
 
     private static byte GetShift(uint mask)
@@ -202,7 +162,7 @@ public class BMPDecoder
     private void DecodeBitFields(BinaryReader fileReader)
     {
         bitFields = new tagBITFIELDS();
-        if (info.biCompression == 3 || info.biCompression == 6)
+        if (info.biCompression == 3 || info.biCompression == 6 || info.IsV4 || info.IsV5)
         {
             bitFields.bRedMask = fileReader.ReadUInt32();
             bitFields.bRedShift = GetShift(bitFields.bRedMask);
@@ -216,25 +176,28 @@ public class BMPDecoder
             bitFields.bBlueShift = GetShift(bitFields.bBlueMask);
             bitFields.bBlueMult = GetMult(bitFields.bBlueMask);
 
-            if (info.biCompression == 6 || tag.bfOffBits != 66)
+            if (info.biCompression == 6 || tag.bfOffBits != 66 || info.IsV4 || info.IsV5)
             {
                 bitFields.bAlphaMask = fileReader.ReadUInt32();
                 bitFields.bAlphaShift = GetShift(bitFields.bAlphaMask);
                 bitFields.bAlphaMult = GetMult(bitFields.bAlphaMask);
             }
-        } 
+        }
     }
 
     private void DecodeRGBQUAD(BinaryReader fileReader)
     {
         colorList = new List<tagRGBQUAD>();
-        for (int index = 0; index < (int)Math.Pow(2, info.biBitCount); index++)
+        var biClrUsed = info.biClrUsed > 0 ? info.biClrUsed : (int)Math.Pow(2, info.biBitCount);
+        for (int index = 0; index < biClrUsed; index++)
         {
             tagRGBQUAD quad = new tagRGBQUAD();
             quad.rgbB = fileReader.ReadByte();
             quad.rgbG = fileReader.ReadByte();
             quad.rgbR = fileReader.ReadByte();
-            quad.rgbReserved = fileReader.ReadByte();
+            if (!info.IsCore)
+                quad.rgbReserved = fileReader.ReadByte();
+
             quad.color = new Color(quad.rgbR / 255.0f, quad.rgbG / 255.0f, quad.rgbB / 255.0f);
             colorList.Add(quad);
         }
@@ -254,16 +217,13 @@ public class BMPDecoder
 
         fileReader.BaseStream.Position = tag.bfOffBits;
 
-        int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
             int bitCount = 0;
             byte value = 0x00;
             for (int x = 0; x < texture.width; x++)
             {
-                int k = tag.bfOffBits + i;
                 int index = 0;
-
                 switch (bitCount)
                 {
                     case 0:
@@ -309,9 +269,7 @@ public class BMPDecoder
                 }
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
-                i += 3;
             }
-            i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
@@ -475,15 +433,13 @@ public class BMPDecoder
 
         fileReader.BaseStream.Position = tag.bfOffBits;
 
-        int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
             bool next = true;
             byte value = 0x00;
             for (int x = 0; x < texture.width; x++)
             {
-                int k = tag.bfOffBits + i;
-                int index = 0;
+                int index;
                 if (next)
                 {
                     next = false;
@@ -496,9 +452,7 @@ public class BMPDecoder
                     index = Convert.ToInt32(value & 0x0F);
                 }
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
-                i += 3;
             }
-            i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
@@ -582,18 +536,14 @@ public class BMPDecoder
 
         fileReader.BaseStream.Position = tag.bfOffBits;
 
-        int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
             for (int x = 0; x < texture.width; x++)
             {
-                int k = tag.bfOffBits + i;
                 byte value = fileReader.ReadByte();
                 int index = Convert.ToInt32(value);
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
-                i += 3;
             }
-            i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
@@ -615,12 +565,10 @@ public class BMPDecoder
 
         fileReader.BaseStream.Position = tag.bfOffBits;
 
-        int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
             for (int x = 0; x < texture.width; x++)
             {
-                int k = tag.bfOffBits + i;
                 ushort value = fileReader.ReadUInt16();
                 Color pixelColor = new Color(0, 0, 0);
 
@@ -645,9 +593,7 @@ public class BMPDecoder
                 }
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
-                i += 3;
             }
-            i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
@@ -668,12 +614,10 @@ public class BMPDecoder
 
         fileReader.BaseStream.Position = tag.bfOffBits;
 
-        int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
             for (int x = 0; x < texture.width; x++)
             {
-                int k = tag.bfOffBits + i;
                 byte[] value = new byte[3];
                 fileReader.Read(value, 0, 3);
 
@@ -684,9 +628,7 @@ public class BMPDecoder
                 Color pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
-                i += 3;
             }
-            i += skip;
 
             fileReader.BaseStream.Position += skip;
         }
@@ -698,18 +640,14 @@ public class BMPDecoder
     {
         Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
 
-        int skip = 0;
-
         //Not need skip
 
         fileReader.BaseStream.Position = tag.bfOffBits;
 
-        int i = 0;
         for (int y = 0; y < texture.height; y++)
         {
             for (int x = 0; x < texture.width; x++)
             {
-                int k = tag.bfOffBits + i;
                 byte[] value = new byte[4];
                 fileReader.Read(value, 0, 4);
 
@@ -720,11 +658,7 @@ public class BMPDecoder
                 var pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
-                i += 3;
             }
-            i += skip;
-
-            fileReader.BaseStream.Position += skip;
         }
 
         return texture;
@@ -788,6 +722,54 @@ public struct tagBMP_INFOHEADER
     public int biYPelsPerMeter;
     public int biClrUsed;
     public int biClrImportant;
+
+    public bool IsCore
+    {
+        get
+        {
+            return biSize == 12;
+        }
+    }
+
+    public bool IsOS2V2Lite
+    {
+        get
+        {
+            return biSize == 16;
+        }
+    }
+
+    public bool IsOS2V2
+    {
+        get
+        {
+            return biSize == 64;
+        }
+    }
+
+    public bool IsV3
+    {
+        get
+        {
+            return biSize == 40 || biSize == 52 || biSize == 56;
+        }
+    }
+
+    public bool IsV4
+    {
+        get
+        {
+            return biSize == 108;
+        }
+    }
+
+    public bool IsV5
+    {
+        get
+        {
+            return biSize == 124;
+        }
+    }
 }
 
 public struct tagBITFIELDS
