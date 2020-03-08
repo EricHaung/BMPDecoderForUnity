@@ -113,10 +113,10 @@ public class BMPDecoder
     private void DecodeHeader(BinaryReader fileReader)
     {
         tag.bfType = System.Text.Encoding.UTF8.GetString(fileReader.ReadBytes(2));
-        tag.bfSize = fileReader.ReadInt32();
-        tag.bfReserved1 = fileReader.ReadInt16();
-        tag.bfReserved2 = fileReader.ReadInt16();
-        tag.bfOffBits = fileReader.ReadInt32();
+        tag.bfSize = fileReader.ReadUInt32();
+        tag.bfReserved1 = fileReader.ReadUInt16();
+        tag.bfReserved2 = fileReader.ReadUInt16();
+        tag.bfOffBits = fileReader.ReadUInt32();
 
         if (tag.bfType == "BA")
         {
@@ -124,35 +124,35 @@ public class BMPDecoder
             tag.bfType = System.Text.Encoding.UTF8.GetString(fileReader.ReadBytes(2));
             var Size = fileReader.ReadInt32();
             var OffsetToNext = fileReader.ReadInt32();
-            tag.bfOffBits = fileReader.ReadInt32();
+            tag.bfOffBits = fileReader.ReadUInt32();
         }
     }
 
     private void DecodeInfo(BinaryReader fileReader)
     {
-        info.biSize = fileReader.ReadInt32();
+        info.biSize = fileReader.ReadUInt32();
         if (info.IsCore)
         {
-            info.biWidth = fileReader.ReadInt16();
-            info.biHeight = fileReader.ReadInt16();
-            info.biPlanes = fileReader.ReadInt16();
-            info.biBitCount = fileReader.ReadInt16();
+            info.biWidth = fileReader.ReadUInt16();
+            info.biHeight = fileReader.ReadUInt16();
+            info.biPlanes = fileReader.ReadUInt16();
+            info.biBitCount = fileReader.ReadUInt16();
         }
         else
         {
             info.biWidth = fileReader.ReadInt32();
             info.biHeight = fileReader.ReadInt32();
-            info.biPlanes = fileReader.ReadInt16();
-            info.biBitCount = fileReader.ReadInt16();
+            info.biPlanes = fileReader.ReadUInt16();
+            info.biBitCount = fileReader.ReadUInt16();
             if (info.IsOS2V2Lite)
                 return;
 
-            info.biCompression = fileReader.ReadInt32();
-            info.biSizeImage = fileReader.ReadInt32();
+            info.biCompression = fileReader.ReadUInt32();
+            info.biSizeImage = fileReader.ReadUInt32();
             info.biXPelsPerMeter = fileReader.ReadInt32();
             info.biYPelsPerMeter = fileReader.ReadInt32();
-            info.biClrUsed = fileReader.ReadInt32();
-            info.biClrImportant = fileReader.ReadInt32();
+            info.biClrUsed = fileReader.ReadUInt32();
+            info.biClrImportant = fileReader.ReadUInt32();
             DecodeBitFields(fileReader);
 
             if (info.IsOS2V2)
@@ -175,17 +175,13 @@ public class BMPDecoder
 
     private static double GetMult(uint mask)
     {
-        double result = 256d;
         int bits = 0;
         for (int i = 0; i < 32; i++)
             if ((mask & 1 << i) != 0)
-            {
                 bits++;
-                result /= 4d;
-            }
 
         int maxValue = 1 << bits;
-        return result * (maxValue + 1);
+        return 255.9d / (maxValue - 1);
     }
 
     private void DecodeBitFields(BinaryReader fileReader)
@@ -217,7 +213,7 @@ public class BMPDecoder
     private void DecodeRGBQUAD(BinaryReader fileReader)
     {
         colorList = new List<tagRGBQUAD>();
-        var biClrUsed = info.biClrUsed > 0 ? info.biClrUsed : (int)Math.Pow(2, info.biBitCount);
+        var biClrUsed = info.biClrUsed > 0 ? info.biClrUsed : (uint)Math.Pow(2, info.biBitCount);
         for (int index = 0; index < biClrUsed; index++)
         {
             tagRGBQUAD quad = new tagRGBQUAD();
@@ -238,7 +234,7 @@ public class BMPDecoder
 
         int skip = 0;
 
-        int rowByteLenght = (int)Mathf.Ceil(texture.width / 8f);
+        int rowByteLenght = (int)Math.Ceiling(texture.width / 8f);
         if (rowByteLenght % 4 != 0)
         {
             skip = 4 - (rowByteLenght % 4);
@@ -258,42 +254,42 @@ public class BMPDecoder
                     case 0:
                         bitCount++;
                         value = fileReader.ReadByte();
-                        index = Convert.ToInt32((value >> 7) & 0x01);
+                        index = (value >> 7) & 0x01;
                         break;
 
                     case 1:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 6) & 0x01);
+                        index = (value >> 6) & 0x01;
                         break;
 
                     case 2:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 5) & 0x01);
+                        index = (value >> 5) & 0x01;
                         break;
 
                     case 3:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 4) & 0x01);
+                        index = (value >> 4) & 0x01;
                         break;
 
                     case 4:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 3) & 0x01);
+                        index = (value >> 3) & 0x01;
                         break;
 
                     case 5:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 2) & 0x01);
+                        index = (value >> 2) & 0x01;
                         break;
 
                     case 6:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 1) & 0x01);
+                        index = (value >> 1) & 0x01;
                         break;
 
                     case 7:
                         bitCount = 0;
-                        index = Convert.ToInt32(value & 0x01);
+                        index = value & 0x01;
                         break;
                 }
 
@@ -307,7 +303,7 @@ public class BMPDecoder
     }
 
     //Terminating White Codes (only first 64, look more https://www.ietf.org/rfc/rfc0804.txt)
-    List<string> white64 = new List<string>
+    static List<string> white64 = new List<string>
     {
         "00110101", "000111", "0111", "1000", "1011", "1100", "1110", "1111",
         "10011", "10100", "00111", "01000", "001000", "000011", "110100", "110101",
@@ -320,7 +316,7 @@ public class BMPDecoder
     };
 
     //Terminating Black Codes (only first 64)
-    List<string> black64 = new List<string>
+    static List<string> black64 = new List<string>
     {
         "0000110111", "010", "11", "10", "011", "0011", "0010", "00011",
         "000101", "000100", "0000100", "0000101", "0000111", "00000100", "00000111", "000011000",
@@ -352,42 +348,42 @@ public class BMPDecoder
                     case 0:
                         bitCount++;
                         value = fileReader.ReadByte();
-                        index += Convert.ToInt32((value >> 7) & 0x01);
+                        index += (value >> 7) & 0x01;
                         break;
 
                     case 1:
                         bitCount++;
-                        index += Convert.ToInt32((value >> 6) & 0x01);
+                        index += (value >> 6) & 0x01;
                         break;
 
                     case 2:
                         bitCount++;
-                        index += Convert.ToInt32((value >> 5) & 0x01);
+                        index += (value >> 5) & 0x01;
                         break;
 
                     case 3:
                         bitCount++;
-                        index += Convert.ToInt32((value >> 4) & 0x01);
+                        index += (value >> 4) & 0x01;
                         break;
 
                     case 4:
                         bitCount++;
-                        index += Convert.ToInt32((value >> 3) & 0x01);
+                        index += (value >> 3) & 0x01;
                         break;
 
                     case 5:
                         bitCount++;
-                        index += Convert.ToInt32((value >> 2) & 0x01);
+                        index += (value >> 2) & 0x01;
                         break;
 
                     case 6:
                         bitCount++;
-                        index += Convert.ToInt32((value >> 1) & 0x01);
+                        index += (value >> 1) & 0x01;
                         break;
 
                     case 7:
                         bitCount = 0;
-                        index += Convert.ToInt32(value & 0x01);
+                        index += value & 0x01;
                         break;
                 }
 
@@ -420,7 +416,7 @@ public class BMPDecoder
 
         int skip = 0;
 
-        int rowByteLenght = (int)Mathf.Ceil(texture.width / 4f);
+        int rowByteLenght = (int)Math.Ceiling(texture.width / 4f);
         if (rowByteLenght % 4 != 0)
         {
             skip = 4 - (rowByteLenght % 4);
@@ -440,22 +436,22 @@ public class BMPDecoder
                     case 0:
                         bitCount++;
                         value = fileReader.ReadByte();
-                        index = Convert.ToInt32((value >> 6) & 0x03);
+                        index = (value >> 6) & 0x03;
                         break;
 
                     case 1:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 4) & 0x03);
+                        index = (value >> 4) & 0x03;
                         break;
 
                     case 2:
                         bitCount++;
-                        index = Convert.ToInt32((value >> 2) & 0x03);
+                        index = (value >> 2) & 0x03;
                         break;
 
                     case 3:
                         bitCount = 0;
-                        index = Convert.ToInt32(value & 0x03);
+                        index = value & 0x03;
                         break;
                 }
 
@@ -562,7 +558,7 @@ public class BMPDecoder
 
         int skip = 0;
 
-        int rowByteLenght = (int)Mathf.Ceil(texture.width / 2f);
+        int rowByteLenght = (int)Math.Ceiling(texture.width / 2f);
         if (rowByteLenght % 4 != 0)
         {
             skip = 4 - (rowByteLenght % 4);
@@ -581,12 +577,12 @@ public class BMPDecoder
                 {
                     next = false;
                     value = fileReader.ReadByte();
-                    index = Convert.ToInt32((value >> 4) & 0x0F);
+                    index = (value >> 4) & 0x0F;
                 }
                 else
                 {
                     next = true;
-                    index = Convert.ToInt32(value & 0x0F);
+                    index = value & 0x0F;
                 }
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
             }
@@ -677,8 +673,7 @@ public class BMPDecoder
         {
             for (int x = 0; x < texture.width; x++)
             {
-                byte value = fileReader.ReadByte();
-                int index = Convert.ToInt32(value);
+                byte index = fileReader.ReadByte();
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, colorList[index].color);
             }
 
@@ -688,7 +683,7 @@ public class BMPDecoder
         return texture;
     }
 
-    private Texture2D Decode16BitImage(BinaryReader fileReader)
+    private Texture2D Decode16BitImage(BinaryReader fileReader, bool fakeAlpha = false)
     {
         Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
 
@@ -711,10 +706,20 @@ public class BMPDecoder
 
                 if (info.biCompression == 0) //RGB 555 0x 0RRRRRGG GGGBBBBB
                 {
-                    int rgbR = Convert.ToInt16((value >> 10) & 0x1F) * 33 / 4;
-                    int rgbG = Convert.ToInt16((value >> 5) & 0x1F) * 33 / 4;
-                    int rgbB = Convert.ToInt16(value & 0x1F) * 33 / 4;
-                    pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
+                    int rgbR = ((value >> 10) & 0x1F) * 33 / 4;
+                    int rgbG = ((value >> 5) & 0x1F) * 33 / 4;
+                    int rgbB = (value & 0x1F) * 33 / 4;
+                    int rgbA = ((value >> 15) & 0x01) * 255;
+
+                    if (!fakeAlpha)
+                    {
+                        if (rgbA > 0)
+                            return Decode16BitImage(fileReader, true);
+
+                        rgbA = 255;
+                    }
+
+                    pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
                 }
                 else if (info.biCompression == 3 || info.biCompression == 6) //RGB 565 0x RRRRRGGG GGGBBBBB
                 {
@@ -828,12 +833,9 @@ public class BMPDecoder
         {
             for (int x = 0; x < texture.width; x++)
             {
-                byte[] value = new byte[3];
-                fileReader.Read(value, 0, 3);
-
-                int rgbB = Convert.ToInt16(value[0]);
-                int rgbG = Convert.ToInt16(value[1]);
-                int rgbR = Convert.ToInt16(value[2]);
+                byte rgbB = fileReader.ReadByte();
+                byte rgbG = fileReader.ReadByte();
+                byte rgbR = fileReader.ReadByte();
 
                 Color pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
 
@@ -846,7 +848,7 @@ public class BMPDecoder
         return texture;
     }
 
-    private Texture2D Decode32BitImage(BinaryReader fileReader)
+    private Texture2D Decode32BitImage(BinaryReader fileReader, bool fakeAlpha = false)
     {
         Texture2D texture = new Texture2D(info.biWidth, info.biHeight);
 
@@ -858,14 +860,20 @@ public class BMPDecoder
         {
             for (int x = 0; x < texture.width; x++)
             {
-                byte[] value = new byte[4];
-                fileReader.Read(value, 0, 4);
+                int rgbB = fileReader.ReadByte();
+                int rgbG = fileReader.ReadByte();
+                int rgbR = fileReader.ReadByte();
+                int rgbA = fileReader.ReadByte();
 
-                int rgbB = Convert.ToInt16(value[0]);
-                int rgbG = Convert.ToInt16(value[1]);
-                int rgbR = Convert.ToInt16(value[2]);
-                int rgbReserved = Convert.ToInt16(value[3]);
-                var pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f);
+                if (!fakeAlpha)
+                {
+                    if (rgbA > 0)
+                        return Decode32BitImage(fileReader, true);
+
+                    rgbA = 255;
+                }
+
+                var pixelColor = new Color(rgbR / 255f, rgbG / 255f, rgbB / 255f, rgbA / 255f);
 
                 texture.SetPixel(x, bTopDown ? info.biHeight - y - 1 : y, pixelColor);
             }
@@ -913,25 +921,25 @@ public class BMPDecoder
 public struct tagBITMAPFILEHEADER
 {
     public string bfType;
-    public int bfSize;
-    public short bfReserved1;
-    public short bfReserved2;
-    public int bfOffBits;
+    public uint bfSize;
+    public ushort bfReserved1;
+    public ushort bfReserved2;
+    public uint bfOffBits;
 }
 
 public struct tagBMP_INFOHEADER
 {
-    public int biSize;
+    public uint biSize;
     public int biWidth;
     public int biHeight;
-    public short biPlanes;
-    public short biBitCount;
-    public int biCompression;
-    public int biSizeImage;
+    public ushort biPlanes;
+    public ushort biBitCount;
+    public uint biCompression;
+    public uint biSizeImage;
     public int biXPelsPerMeter;
     public int biYPelsPerMeter;
-    public int biClrUsed;
-    public int biClrImportant;
+    public uint biClrUsed;
+    public uint biClrImportant;
 
     public bool IsCore
     {
