@@ -1,7 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
-using System;
 
 public class BMPDecoder
 {
@@ -53,37 +53,33 @@ public class BMPDecoder
             throw new Exception("Png not supported");
         }
 
+        DecodeRGBQUAD(fileReader);
+
         switch (info.biBitCount)
         {
             case 1:
                 if (info.biCompression == 0)
-                {
-                    DecodeRGBQUAD(fileReader);
                     texture = Decode1BitImage(fileReader);
-                }
                 else if (info.biCompression == 3 && (info.IsOS2V2 || info.IsOS2V2Lite))
                     texture = Decode1BitHuffmanImage(fileReader);
                 break;
 
             case 2:
-                DecodeRGBQUAD(fileReader);
                 texture = Decode2BitImage(fileReader);
                 break;
 
             case 4:
-                DecodeRGBQUAD(fileReader);
-                if (info.biCompression == 2)
-                    texture = Decode4BitRleImage(fileReader);
-                else
+                if (info.biCompression == 0)
                     texture = Decode4BitImage(fileReader);
+                else if(info.biCompression == 2)
+                    texture = Decode4BitRleImage(fileReader);
                 break;
 
             case 8:
-                DecodeRGBQUAD(fileReader);
-                if (info.biCompression == 1)
-                    texture = Decode8BitRleImage(fileReader);
-                else
+                if (info.biCompression == 0)
                     texture = Decode8BitImage(fileReader);
+                else if (info.biCompression == 1)
+                    texture = Decode8BitRleImage(fileReader);
                 break;
 
             case 16:
@@ -187,7 +183,7 @@ public class BMPDecoder
     private void DecodeBitFields(BinaryReader fileReader)
     {
         bitFields = new tagBITFIELDS();
-        if (info.biCompression == 3 || info.biCompression == 6 || info.IsV4 || info.IsV5)
+        if ((info.IsV3 && (info.biCompression == 3 || info.biCompression == 6)) || info.IsV4 || info.IsV5)
         {
             bitFields.bRedMask = fileReader.ReadUInt32();
             bitFields.bRedShift = GetShift(bitFields.bRedMask);
@@ -212,6 +208,9 @@ public class BMPDecoder
 
     private void DecodeRGBQUAD(BinaryReader fileReader)
     {
+        if (info.biBitCount > 8 && info.biClrUsed == 0)
+            return;
+
         colorList = new List<tagRGBQUAD>();
         var biClrUsed = info.biClrUsed > 0 ? info.biClrUsed : (uint)Math.Pow(2, info.biBitCount);
         for (int index = 0; index < biClrUsed; index++)
@@ -397,7 +396,7 @@ public class BMPDecoder
                 var count = (white ? white64 : black64).IndexOf(index);
                 if (count != -1)
                 {
-                    Color color = white ? new Color(1, 1, 1) : new Color(0, 0, 0);
+                    Color color = colorList[white ? 0 : 1].color;
                     for (int i = 0; i < count; i++)
                         texture.SetPixel(x++, bTopDown ? info.biHeight - y - 1 : y, color);
 
